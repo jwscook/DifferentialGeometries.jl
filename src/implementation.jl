@@ -6,6 +6,11 @@ import LinearAlgebra.cross
 
 struct CoordinateTransform
   fx::Vector{Function}
+  #function CoordinateTransform(fx::Vector{Function})
+  #  output = new()
+  #  (output)(x) = x -> [f(x) for f ∈ f]
+  #  return output
+  #end
 end
 const CT = CoordinateTransform
 length(c::CT) = length(c.fx)
@@ -13,10 +18,10 @@ length(c::CT) = length(c.fx)
 (c::CT)(x) = [c.fx[i](x) for i ∈ 1:length(c)]
 
 function solve(c::CT, f::Function, ic=rand(length(c));
-    rtol=10*eps(), atol=eps())
-#  optim_options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
-#    allow_f_increases=true)
-  result = Optim.optimize(f, rand(length(c)), BFGS())
+    rtol=2*eps(), atol=eps())
+  options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
+    allow_f_increases=true)
+  result = Optim.optimize(f, ic, Newton(), options)
   return Optim.minimizer(result)
 end
 
@@ -48,9 +53,9 @@ end
 gⁱʲ(a::CT, b::CT, i::Integer, j::Integer) = x -> dot(∇(a, i)(x), ∇(b, j)(x))
 function gⁱʲ(a::CT, b::CT=a)
   n, m = length(a), length(b)
-  inner(x, i, j) = (@show p = ∇(a, i)(x); @show q = ∇(b, j)(x); return dot(q, p))
-  return x->reshape([inner(x, i, j) for i in 1:n, j in 1:m], n, m)
-  #return x->reshape([dot(∇(a, i)(x), ∇(b, j)(x)) for i in 1:n, j in 1:m], n, m)
+  #inner(x, i, j) = (@show p = ∇(a, i)(x); @show q = ∇(b, j)(x); return dot(q, p))
+  #return x->reshape([inner(x, i, j) for i in 1:n, j in 1:m], n, m)
+  return x->reshape([dot(∇(a, i)(x), ∇(b, j)(x)) for i in 1:n, j in 1:m], n, m)
 end
 
 gᵢⱼ(a::CT, b::CT=a) = x->inv(gⁱʲ(a, b)(x))

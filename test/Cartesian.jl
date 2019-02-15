@@ -1,5 +1,6 @@
 using Test, LinearAlgebra
 
+@testset "Cartesian tests" begin
 xyz = CoordinateTransform([xyz->xyz[1], xyz->xyz[2], xyz->xyz[3]])
 @testset "Length of CoordinateTransform" begin
   @test length(xyz) == 3
@@ -31,10 +32,10 @@ end
   end
 end
  
-@testset "cartesian" begin
+@testset "inverse" begin
   for i ∈ 1:10
-    R = rand(3)
-    @test cartesian(xyz, R) ≈ R
+    x = rand(3)
+    @test inverse(xyz, x) ≈ x rtol=sqrt(eps())
   end
 end
-
+end
