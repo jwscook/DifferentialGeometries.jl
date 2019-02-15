@@ -30,4 +30,11 @@ end
     @test J(xyz)(rand(3)) ≈ 1.0
   end
 end
+ 
+@testset "cartesian" begin
+  for i ∈ 1:10
+    R = rand(3)
+    @test cartesian(xyz, R) ≈ R
+  end
+end
 

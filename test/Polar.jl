@@ -36,8 +36,18 @@ end
 end
  
 @testset "Jacobian" begin
-  xy = rand(2)
-  r, θ = rθ(xy)
-  @test J(rθ)(xy) ≈ r
+  for i ∈ 1:10
+    xy = rand(2)
+    r, θ = rθ(xy)
+    @test J(rθ)(xy) ≈ r
+  end
+end
+
+@testset "cartesian" begin
+  for i ∈ 1:1
+    co = [2*rand(2), 2π*rand() - π]
+    x, y = co[1]*sin(co[2]), co[1]*cos(co[2])
+    @test cartesian(rθ, co) ≈ [x, y]
+  end
 end
 
