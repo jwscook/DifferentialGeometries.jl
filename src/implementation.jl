@@ -4,18 +4,18 @@ import Base.length
 import LinearAlgebra.dot
 import LinearAlgebra.cross
 
-struct CoordinateTransform
-  fx::Vector{Function}
-  #function CoordinateTransform(fx::Vector{Function})
-  #  output = new()
-  #  (output)(x) = x -> [f(x) for f ∈ f]
-  #  return output
-  #end
+struct CoordinateTransform{T<:Function}
+  f::T
+  dims::Int
+  function CoordinateTransform(fx::Vector{T}) where {T}
+    output = new{T}(x -> [f(x) for f ∈ fx], length(fx))
+    return output
+  end
 end
 const CT = CoordinateTransform
-length(c::CT) = length(c.fx)
-(c::CT)(x, i::Integer) = c.fx[i](x)
-(c::CT)(x) = [c.fx[i](x) for i ∈ 1:length(c)]
+length(c::CT) = c.dims
+(c::CT)(x, i::Integer) = c.f(x)[i]
+(c::CT)(x) = c.f(x)
 
 function solve(c::CT, f::Function, ic=rand(length(c));
     rtol=2*eps(), atol=eps())
@@ -26,7 +26,7 @@ function solve(c::CT, f::Function, ic=rand(length(c));
 end
 
 function inverse(c::CT, coordinates::Vector{T}) where {T}
-  flocal(x) = mapreduce(i -> (coordinates[i] - c(x, i))^2, +, 1:length(c))
+  flocal(x) = mapreduce(i -> sum((coordinates .- c(x)).^2), +, 1:length(c))
   return solve(c, flocal)
 end
 
@@ -36,27 +36,25 @@ struct BasisVector{T<:Component}
   fs::Vector{T}
 end
 Base.iterate(it::BasisVector, x) = iterate(it.fs, x)
+(A::BasisVector)(x) = hcat((f(x) for f ∈ A.fs)...)
 
 """Contravariant components Aⁱ"""
-struct Contravariant <: Component
-  f::Function
+struct Contravariant{T<:Function} <: Component
+  f::T
 end
 (Aⁱ::Contravariant)(x) = Aⁱ.f(x)
 
 """Covariant components, Aᵢ """
-struct Covariant <: Component
-  f::Function
+struct Covariant{T<:Function} <: Component
+  f::T
 end
 (Aᵢ::Covariant)(x) = Aᵢ.f(x)
 
 ∇(c::CT, i::Integer) = Covariant(x -> ForwardDiff.gradient(y -> c(y, i), x))
+∇(c::CT) = BasisVector(
+  [Covariant(x -> ForwardDiff.gradient(y -> c(y, i), x)) for i ∈ 1:c.dims])
 gⁱʲ(a::CT, b::CT, i::Integer, j::Integer) = x -> dot(∇(a, i)(x), ∇(b, j)(x))
-function gⁱʲ(a::CT, b::CT=a)
-  n, m = length(a), length(b)
-  #inner(x, i, j) = (@show p = ∇(a, i)(x); @show q = ∇(b, j)(x); return dot(q, p))
-  #return x->reshape([inner(x, i, j) for i in 1:n, j in 1:m], n, m)
-  return x->reshape([dot(∇(a, i)(x), ∇(b, j)(x)) for i in 1:n, j in 1:m], n, m)
-end
+gⁱʲ(a::CT, b::CT=a) = x -> ∇(a)(x)' * ∇(b)(x)
 
 gᵢⱼ(a::CT, b::CT=a) = x->inv(gⁱʲ(a, b)(x))
 J(a::CT, b::CT=a) = x -> sqrt(det(gᵢⱼ(a, b)(x)))
