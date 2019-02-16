@@ -4,7 +4,9 @@ import Base.length
 import LinearAlgebra.dot
 import LinearAlgebra.cross
 
-struct CoordinateTransform{T<:Function}
+abstract type AbstractTransform end
+
+struct CoordinateTransform{T<:Function} <: AbstractTransform
   f::T
   dims::Int
   function CoordinateTransform(fx::Vector{T}) where {T}
@@ -15,8 +17,9 @@ const CT = CoordinateTransform
 length(c::CT) = c.dims
 (c::CT)(x, i::Integer) = c.f(x)[i]
 (c::CT)(x) = c.f(x)
+Base.:\(c::CT, x) = inverse(c, x)
 
-function solve(c::CT, f::Function, ic=rand(c.dims);
+function solve(f::Function, dims, ic=rand(dims);
     rtol=2*eps(), atol=eps())
   options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
     allow_f_increases=true)
@@ -24,9 +27,12 @@ function solve(c::CT, f::Function, ic=rand(c.dims);
   return Optim.minimizer(result)
 end
 
-function inverse(c::CT, coordinates::Vector{T}) where {T}
-  flocal(x) = mapreduce(i -> sum((coordinates .- c(x)).^2), +, 1:c.dims)
-  return solve(c, flocal)
+function inverse(fs::Vector{T}, coords) where {T<:Function}
+  g(x) = [f(x) for f ∈ fs]
+  return solve(x -> sum((coords .- g(x)).^2), length(fs))
+end
+function inverse(c::CT, coords::AbstractVector{T}) where {T}
+  return solve(x -> sum((coords .- c(x)).^2), c.dims)
 end
 
 abstract type Component end

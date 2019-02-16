@@ -54,6 +54,18 @@ using Test, LinearAlgebra
       r, θ = rand(), rand()*2*π - π
       x, y = r*cos(θ), r*sin(θ)
       @test inverse(polar, [r, θ]) ≈ [x,  y] rtol=sqrt(eps())
+      @test polar \ [r, θ] ≈ [x,  y] rtol=sqrt(eps())
+    end
+  end
+
+  @testset "reverse inverse" begin
+    invpolar = CoordinateTransform([rθ -> rθ[1]*cos(rθ[2]),
+                                    rθ -> rθ[1]*sin(rθ[2])])
+    for i ∈ 1:numberofiterations
+      r, θ = rand(), rand()*2*π - π
+      x, y = r*cos(θ), r*sin(θ)
+      #@test invpolar \ [x, y] ≈ [r, θ] rtol=sqrt(eps())
+      @test invpolar(invpolar \ [x, y]) ≈ [x, y] rtol=sqrt(eps())
     end
   end
 

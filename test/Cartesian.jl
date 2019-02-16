@@ -40,6 +40,7 @@ using Test, LinearAlgebra
     for i ∈ 1:numberofiterations
       x = rand(3)
       @test inverse(xyz, x) ≈ x rtol=sqrt(eps())
+      @test xyz \ x ≈ x rtol=sqrt(eps())
     end
   end
 
