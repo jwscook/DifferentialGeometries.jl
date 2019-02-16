@@ -1,4 +1,4 @@
-using ForwardDiff, LinearAlgebra, Combinatorics, Optim
+using ForwardDiff, LinearAlgebra, Combinatorics, NLsolve, Optim
 
 import Base.length
 import LinearAlgebra.dot
@@ -19,20 +19,33 @@ length(c::CT) = c.dims
 (c::CT)(x) = c.f(x)
 Base.:\(c::CT, x) = inverse(c, x)
 
-function solve(f::Function, dims, ic=rand(dims);
-    rtol=2*eps(), atol=eps())
-  options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
-    allow_f_increases=true)
-  result = Optim.optimize(f, ic, Newton(), options)
-  return Optim.minimizer(result)
-end
 
-function inverse(fs::Vector{T}, coords) where {T<:Function}
+#function solve(f::Function, dims, ic=rand(dims);
+#     rtol=2*eps(), atol=eps())
+#  options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
+#    allow_f_increases=true)
+#  result = Optim.optimize(f, ic, Newton(), options)
+#  return Optim.minimizer(result)
+#end
+#function inverse(fs::Vector{T}, coords::AbstractVector) where {T<:Function}
+#    g(x) = [f(x) for f ∈ fs]
+#  return solve(x -> sum((coords .- g(x)).^2), length(fs))
+#end
+#function inverse(c::CT, coords::AbstractVector{T}) where {T}
+#  return solve(x -> sum((coords .- c(x)).^2), c.dims)
+#end
+
+function solve(f::Function, dims::Integer; ic::AbstractVector=ones(dims),
+    rtol=2*eps(), atol=eps())
+  result = NLsolve.nlsolve(f, ic, autodiff=:forward)
+  return result.zero
+end
+function inverse(fs::Vector{T}, coords::AbstractVector) where {T<:Function}
   g(x) = [f(x) for f ∈ fs]
-  return solve(x -> sum((coords .- g(x)).^2), length(fs))
+  return solve(x -> g(x) .- coords, length(fs))
 end
 function inverse(c::CT, coords::AbstractVector{T}) where {T}
-  return solve(x -> sum((coords .- c(x)).^2), c.dims)
+  return solve(x -> c(x) .- coords, c.dims)
 end
 
 abstract type Component end
