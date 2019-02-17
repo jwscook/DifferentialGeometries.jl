@@ -64,7 +64,9 @@ using Test, LinearAlgebra
     for i ∈ 1:numberofiterations
       r, θ = rand(), rand()*2*π - π
       x, y = r*cos(θ), r*sin(θ)
-      @test invpolar \ [x, y] ≈ [r, θ] rtol=sqrt(eps())
+      rθ = invpolar \ [x, y]
+#      @test invpolar \ [x, y] ≈ [r, θ] rtol=sqrt(eps())
+      @test [abs(rθ[1]), mod(rθ[2], π)] ≈ [r, mod(θ, π)] rtol=sqrt(eps())
       @test invpolar(invpolar \ [x, y]) ≈ [x, y] rtol=sqrt(eps())
     end
   end
