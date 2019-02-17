@@ -1,7 +1,7 @@
 using Test, LinearAlgebra
 
 @testset "Cartesian tests" begin
-  numberofiterations = 1
+  numberofiterations = 10
 
   xyz = CoordinateTransform([xyz->xyz[1], xyz->xyz[2], xyz->xyz[3]])
 
