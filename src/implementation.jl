@@ -9,9 +9,9 @@ abstract type AbstractTransform end
 struct CoordinateTransform{T<:Function} <: AbstractTransform
   f::T
   dims::Int
-  function CoordinateTransform(fx::Vector{T}) where {T}
-    return new{T}(x -> [f(x) for f ∈ fx], length(fx))
-  end
+end
+function CoordinateTransform(fx::Vector{T}) where {T}
+  return CoordinateTransform(x -> [f(x) for f ∈ fx], length(fx))
 end
 const CT = CoordinateTransform
 length(c::CT) = c.dims

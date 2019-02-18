@@ -84,11 +84,17 @@ using Test, LinearAlgebra
     end
   end
 
-#  @testset "reverse inverse" begin
-#    for i ∈ 1:numberofiterations
-#      #@test invtorus(invtorus \ [x, y]) ≈ [x, y] rtol=sqrt(eps())
-#    end
-#  end
+  @testset "reverse inverse" begin
+    function f(rϕθ)
+      r, ϕ, θ = rϕθ
+      return [(R0 + r * cos(θ)) * cos(ϕ), (R0 + r * cos(θ)) * sin(ϕ), Z0 + r * sin(θ)]
+    end
+    invtorus = CoordinateTransform(f, 3)
+    for i ∈ 1:numberofiterations
+      x, y, z = rand(3)*4 .- 2
+      @test invtorus(invtorus \ [x, y, z]) ≈ [x, y, z] rtol=sqrt(eps())
+    end
+  end
 
   @testset "∂" begin
     for i ∈ 1:numberofiterations
