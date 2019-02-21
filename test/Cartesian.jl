@@ -52,4 +52,41 @@ using Test, LinearAlgebra
     end
   end
 
+  @testset "div" begin
+    for i ∈ 1:numberofiterations
+      a, b, c = rand(0:5), rand(0:5), rand(0:5)
+      fa = x->x[1]^a + 2 + exp(-x[2])
+      fb = x->x[2]^b - 3 + x[3]^rand()
+      fc = x->x[3]^c + 65 + sin(x[1])
+      fs = [fa, fb, fc]
+      x = rand(3)
+      divfa(x) = a * x[1]^(a-1)
+      divfb(x) = b * x[2]^(b-1)
+      divfc(x) = c * x[3]^(c-1)
+      @test ∂(xyz, fa)(x)[1] ≈ divfa(x)
+      @test ∂(xyz, fb)(x)[2] ≈ divfb(x)
+      @test ∂(xyz, fc)(x)[3] ≈ divfc(x)
+      divf(x) = divfa(x) + divfb(x) + divfc(x)
+      @test div(xyz, fs)(x) ≈ divf(x)
+    end
+  end
+
+  @testset "curl" begin
+    for i ∈ 1:numberofiterations
+      a1, a2, a3 =rand(0:5), rand(0:5), rand(0:5)
+      b1, b2, b3 =rand(0:5), rand(0:5), rand(0:5)
+      c1, c2, c3 =rand(0:5), rand(0:5), rand(0:5)
+      fa = x -> x[1]^a1 + x[2]^a2 + x[3]^a3
+      fb = x -> x[1]^b1 + x[2]^c2 + x[3]^b3
+      fc = x -> x[1]^c1 + x[2]^b2 + x[3]^c3
+      fs = [fa, fb, fc]
+      grad(f) = x -> ForwardDiff.gradient(f, x)
+      curlfa(x) = grad(fc)(x)[2] - grad(fb)(x)[3]
+      curlfb(x) = grad(fa)(x)[3] - grad(fc)(x)[1]
+      curlfc(x) = grad(fb)(x)[1] - grad(fa)(x)[2]
+      curlf(x) = [curlfa(x), curlfb(x), curlfc(x)]
+      x = rand(3)*2 .- 1
+      @test curl(xyz, fs)(x)' ≈ curlf(x)
+    end
+  end
 end

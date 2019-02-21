@@ -3,6 +3,7 @@ using Random, Test
 Random.seed!(18)
 include("../src/implementation.jl")
 include("Cartesian.jl")
-include("Polar.jl")
+include("Polar2D.jl")
+include("Polar3D.jl")
 include("Toroidal.jl")
 end

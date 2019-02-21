@@ -1,6 +1,6 @@
 using Test, LinearAlgebra
 
-@testset "Polar tests" begin
+@testset "Polar2D tests" begin
   numberofiterations = 10
 
   polar = CoordinateTransform([xy -> sqrt(xy[1].^2 + xy[2].^2),
@@ -65,7 +65,6 @@ using Test, LinearAlgebra
       r, θ = rand(), rand()*2*π - π
       x, y = r*cos(θ), r*sin(θ)
       rθ = invpolar \ [x, y]
-#      @test invpolar \ [x, y] ≈ [r, θ] rtol=sqrt(eps())
       @test [abs(rθ[1]), mod(rθ[2], π)] ≈ [r, mod(θ, π)] rtol=sqrt(eps())
       @test invpolar(invpolar \ [x, y]) ≈ [x, y] rtol=sqrt(eps())
     end
@@ -82,5 +81,34 @@ using Test, LinearAlgebra
       @test ∂(polar, f)(xy) ≈ [dfdr(xy), dfdθ(xy)]
     end
   end
+
+  @testset "div" begin
+    for i ∈ 1:numberofiterations
+      p, m = rand(0:5), rand(-5:5)
+      fr = xy -> polar(xy)[1]^p
+      fθ = xy -> sin(m * polar(xy)[2])
+      fs = [fr, fθ]
+      divfr(xy) = (p + 1) * polar(xy)[1]^(p - 1)
+      divfθ(xy) = m * cos(m * polar(xy)[2])
+      divf(x) = divfr(x) + divfθ(x)
+      xy = rand(2) * 2 .- 1
+      @test div(polar, fs)(xy) ≈ divf(xy)
+    end
+  end
+
+  @testset "curl" begin
+    for i ∈ 1:numberofiterations
+      p, m = rand(0:5), rand(-5:5)
+      fr = xy -> polar(xy)[1]^p
+      fθ = xy -> sin(m * polar(xy)[2])
+      fs = [fr, fθ]
+      divfr(xy) = (p + 1) * polar(xy)[1]^(p - 1)
+      divfθ(xy) = m * cos(m * polar(xy)[2])
+      divf(x) = divfr(x) + divfθ(x)
+      xy = rand(2) * 2 .- 1
+      @test div(polar, fs)(xy) ≈ divf(xy)
+    end
+  end
+
 
 end
