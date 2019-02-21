@@ -14,7 +14,7 @@ struct CoordinateTransform{T<:Function} <: AbstractTransform
   f::T
   dims::Int
 end
-function CoordinateTransform(fx::Vector{T}) where {T}
+function CoordinateTransform(fx::Vector{Function}) where {T}
   return CoordinateTransform(x -> [f(x) for f ∈ fx], length(fx))
 end
 const CT = CoordinateTransform
@@ -22,22 +22,6 @@ length(c::CT) = c.dims
 (c::CT)(x, i::Integer) = c.f(x)[i]
 (c::CT)(x) = c.f(x)
 Base.:\(c::CT, x) = inverse(c, x)
-
-
-#function solve(f::Function, dims, ic=rand(dims);
-#     rtol=2*eps(), atol=eps())
-#  options = Optim.Options(x_tol=rtol, f_tol=rtol, g_tol=rtol,
-#    allow_f_increases=true)
-#  result = Optim.optimize(f, ic, Newton(), options)
-#  return Optim.minimizer(result)
-#end
-#function inverse(fs::Vector{T}, coords::AbstractVector) where {T<:Function}
-#    g(x) = [f(x) for f ∈ fs]
-#  return solve(x -> sum((coords .- g(x)).^2), length(fs))
-#end
-#function inverse(c::CT, coords::AbstractVector{T}) where {T}
-#  return solve(x -> sum((coords .- c(x)).^2), c.dims)
-#end
 
 function solve(f::Function, dims::Integer; ic::AbstractVector=ones(dims),
     rtol=2*eps(), atol=eps())
@@ -53,7 +37,22 @@ function inverse(c::CT, coords::AbstractVector{T}) where {T}
 end
 
 abstract type Component end
-"""An Co/Contravariant basis vector"""
+
+"""Contravariant component Aⁱ"""
+struct Contravariant <: Component
+  f::Function
+end
+const Con = Contravariant
+(Aⁱ::Contravariant)(x) = Aⁱ.f(x)
+
+"""Covariant component, Aᵢ """
+struct Covariant <: Component
+  f::Function
+end
+const Cov = Covariant
+(Aᵢ::Covariant)(x) = Aᵢ.f(x)
+
+"""A Co/Contravariant basis vector"""
 struct BasisVector{T<:Component}
   Ai::Vector{T}
 end
@@ -64,24 +63,11 @@ Base.length(b::BV) = length(b.Ai)
 Base.eachindex(b::BV) = eachindex(b.Ai)
 Base.enumerate(b::BV) = enumerate(b.Ai)
 Base.getindex(b::BV, i::Integer) = b.Ai[i]
-(A::BasisVector)(x) = hcat((f(x) for f ∈ A.Ai)...)
 
-"""Contravariant component Aⁱ"""
-struct Contravariant{T<:Function} <: Component
-  f::T
-end
-const Con = Contravariant
-(Aⁱ::Contravariant)(x) = Aⁱ.f(x)
-
-"""Covariant component, Aᵢ """
-struct Covariant{T<:Function} <: Component
-  f::T
-end
-const Cov = Covariant
-(Aᵢ::Covariant)(x) = Aᵢ.f(x)
-
-#(A::BasisVector{Con})(x) = hcat((f(x) for f ∈ A.Ai)...)
-#(A::BasisVector{Cov})(x) = hcat((f(x) for f ∈ A.Ai)...)
+(A::BasisVector)(x) = return hcat((f(x) for f ∈ A.Ai)...)
+#(A::BV{Con})(x) = vcat((f(x)' for f ∈ A.Ai)...)
+#(A::BasisVector{Cov{T}})(x) where {T} = hcat((f(x) for f ∈ A.Ai)...)
+#(A::BasisVector{Con{T}})(x) where {T} = vcat((f(x)' for f ∈ A.Ai)...)
 
 ∇(f::T) where {T<:Function} = x -> ForwardDiff.gradient(f, x)
 ∇(c::CT, i::Integer) = Cov(x -> ForwardDiff.gradient(y -> c(y, i), x))
