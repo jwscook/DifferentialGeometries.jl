@@ -6,7 +6,7 @@ using Test, LinearAlgebra
   cart = CoordinateTransform([cart->cart[1]])
 
   @testset "Con to Cov to Con" begin
-    cov0 = Covariant(cart, [x->x])
+    cov0 = Covariant(cart, [x->x[1]])
     @test typeof(cov0) == Covariant
     con1 = Contravariant(cov0)
     @test typeof(con1) == Contravariant
@@ -15,7 +15,7 @@ using Test, LinearAlgebra
   end
 
   @testset "Cov to Con to Cov" begin
-    con0 = Contravariant(cart, [x->x])
+    con0 = Contravariant(cart, [x->x[1]])
     @test typeof(con0) == Contravariant
     cov1 = Covariant(con0)
     @test typeof(cov1) == Covariant

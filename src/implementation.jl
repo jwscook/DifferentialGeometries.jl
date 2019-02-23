@@ -38,26 +38,35 @@ end
 
 abstract type Component end
 
-"""Contravariant component Aⁱ
-A = Aⁱ ∂uᵢ
-"""
-struct Contravariant <: Component
-  ct::CT
-  i::Vector{Function}
-end
-const Con = Contravariant
-#(Aⁱ::Con)(x) = Aⁱ.i(x)
-
 """
 Covariant component, Aᵢ
 A = Aᵢ ∇uⁱ
 """
 struct Covariant <: Component
   ct::CT
-  i::Vector{Function}
+  i::Vector
+  function Covariant(c::CT, fs::Vector{T}) where {T<:Function}
+    return new(c, [x -> f(x) * ∇(c, k)(x) for (k, f) ∈ enumerate(fs)])
+  end
 end
 const Cov = Covariant
 #(Aᵢ::Cov)(x) = Aᵢ.i(x)
+
+"""Contravariant component Aⁱ
+A = Aⁱ ∂uᵢ
+"""
+struct Contravariant <: Component
+  ct::CT
+  i::Vector
+  function Contravariant(c::CT, fs::Vector{T}) where {T<:Function}
+    return new(c, raiseindex(Covariant(c, fs)))
+  end
+end
+const Con = Contravariant
+#(Aⁱ::Con)(x) = Aⁱ.i(x)
+
+raiseindex(A::Covariant) = [x -> gⁱʲ(A.ct)(x) * Aᵢ(x) for Aᵢ ∈ A]
+lowerindex(A::Contravariant) = [x -> gᵢⱼ(A.ct)(x) * Aⁱ(x) for Aⁱ ∈ A]
 
 """A Co/Contravariant basis vector"""
 Base.iterate(a::Component) = iterate(a.i)
@@ -66,8 +75,6 @@ Base.length(a::Component) = length(a.i)
 Base.eachindex(a::Component) = eachindex(a.i)
 Base.enumerate(a::Component) = enumerate(a.i)
 Base.getindex(a::Component, i::Integer) = a.i[i]
-#Base.getindex(a::Covariant, i::Integer) = a.i[i]
-#Base.getindex(a::Contravariant, i::Integer) = a.i[i]
 
 (Aⁱ::Con)(x) = hcat((f(x) for f ∈ Aⁱ.i)...)
 (Aᵢ::Cov)(x) = vcat((f(x)' for f ∈ Aᵢ.i)...)
@@ -90,8 +97,8 @@ gᵢⱼ(a::CT, b::CT=a) = x -> inv(gⁱʲ(a, b)(x))
 
 J(a::CT, b::CT=a) = x -> sqrt(det(gᵢⱼ(a, b)(x)))
 
-Con(A::Cov) = Con(A.ct, [x -> gⁱʲ(A.ct)(x) * Aᵢ(x) for Aᵢ ∈ A])
-Cov(A::Con) = Cov(A.ct, [x -> gᵢⱼ(A.ct)(x) * Aⁱ(x) for Aⁱ ∈ A])
+Cov(Aⁱ::Con) = Cov(Aⁱ.ct, lowerindex(Aⁱ))
+Con(Aᵢ::Cov) = Con(Aᵢ.ct, raiseindex(Aᵢ))
 norm(A::Cov) = x -> [abs(gⁱʲ(A.ct)(x)[k, k]) * Aᵢ(x)[k] for (k, Aᵢ) ∈ enumerate(A)]
 norm(A::Con) = x -> [abs(gᵢⱼ(A.ct)(x)[k, k]) * Aⁱ(x)[k] for (k, Aⁱ) ∈ enumerate(A)]
 
