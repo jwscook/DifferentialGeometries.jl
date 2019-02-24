@@ -83,8 +83,8 @@ Base.getindex(a::Component, i::Integer) = a.i[i]
 
 ∇(f::T) where {T<:Function} = x -> ForwardDiff.gradient(f, x)
 ∇(c::CT, i::Integer) = x -> ForwardDiff.gradient(y -> c(y, i), x)
-#∇(c::CT, i::Integer) = Cov(c, ∇(y -> c(y, i)))
-∇(c::CT) = Cov(c, [∇(y -> c(y, i)) for i ∈ 1:c.dims])
+#∇(c::CT) = Cov(c, [∇(y -> c(y, i)) for i ∈ 1:c.dims])
+∇(c::CT) = Cov(c, [x -> 1 for i ∈ 1:c.dims])
 ∂(c::CT, f::Function) = x -> inv(∇(c)(x)) * ∇(f)(x)
 ∂(Aᵢ::Cov) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ(y))(x)
 #eⁱ = ∇
@@ -103,7 +103,7 @@ norm(A::Cov) = x -> [abs(gⁱʲ(A.ct)(x)[k, k]) * Aᵢ(x)[k] for (k, Aᵢ) ∈ e
 norm(A::Con) = x -> [abs(gᵢⱼ(A.ct)(x)[k, k]) * Aⁱ(x)[k] for (k, Aⁱ) ∈ enumerate(A)]
 
 function div(Aⁱ::Contravariant, i::Integer)
-  return x -> ∂(Aⁱ.ct, y -> Aⁱ[i](y) * J(Aⁱ.ct)(y))(x)[i] / J(Aⁱ.ct)(x)
+  return x -> (∂(Aⁱ.ct, y -> Aⁱ[i](y)[i] * J(Aⁱ.ct)(y))(x) / J(Aⁱ.ct)(x))[i]
 end
 div(Aᵢ::Cov) = div(Con(Aᵢ))
 div(Aⁱ::Con) = x -> mapreduce(i -> div(Aⁱ, i)(x), +, eachindex(Aⁱ))
