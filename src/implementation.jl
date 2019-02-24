@@ -50,7 +50,7 @@ struct Covariant <: Component
   end
 end
 const Cov = Covariant
-#(Aᵢ::Cov)(x) = Aᵢ.i(x)
+#(Aᵢ::Cov)(x) = Aᵢ.i.(x)
 
 """Contravariant component Aⁱ
 A = Aⁱ ∂uᵢ
@@ -63,7 +63,7 @@ struct Contravariant <: Component
   end
 end
 const Con = Contravariant
-#(Aⁱ::Con)(x) = Aⁱ.i(x)
+#(Aⁱ::Con)(x) = Aⁱ.i.(x)
 
 raiseindex(A::Covariant) = [x -> gⁱʲ(A.ct)(x) * Aᵢ(x) for Aᵢ ∈ A]
 lowerindex(A::Contravariant) = [x -> gᵢⱼ(A.ct)(x) * Aⁱ(x) for Aⁱ ∈ A]
@@ -86,7 +86,8 @@ Base.getindex(a::Component, i::Integer) = a.i[i]
 #∇(c::CT) = Cov(c, [∇(y -> c(y, i)) for i ∈ 1:c.dims])
 ∇(c::CT) = Cov(c, [x -> 1 for i ∈ 1:c.dims])
 ∂(c::CT, f::Function) = x -> inv(∇(c)(x)) * ∇(f)(x)
-∂(Aᵢ::Cov) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ(y))(x)
+#∂(Aᵢ::Cov) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ(y))(x)
+∂(Aᵢ::Cov, i::Integer) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ[i](y))(x)
 #eⁱ = ∇
 #eᵢ = ∂
 
@@ -112,9 +113,9 @@ div(ct::CT, fs::Vector{T}) where {T<:Function} = div(Con(ct, fs))
 # Bᵏ = ∇×(Aᵢeⁱ) = ϵijk ∂i Aⱼ e_k
 function curl(Aᵢ::Cov)
   @assert Aᵢ.ct.dims == 3
-  f1(x) = (∂(Aᵢ.ct, Aᵢ[3])(x)[2] - ∂(Aᵢ.ct, Aᵢ[2])(x)[3]) / J(Aᵢ.ct)(x)
-  f2(x) = (∂(Aᵢ.ct, Aᵢ[1])(x)[3] - ∂(Aᵢ.ct, Aᵢ[3])(x)[1]) / J(Aᵢ.ct)(x)
-  f3(x) = (∂(Aᵢ.ct, Aᵢ[2])(x)[1] - ∂(Aᵢ.ct, Aᵢ[1])(x)[2]) / J(Aᵢ.ct)(x)
+  f1(x) = (∂(Aᵢ, 3)(x)[2] - ∂(Aᵢ, 2)(x)[3]) / J(Aᵢ.ct)(x)
+  f2(x) = (∂(Aᵢ, 1)(x)[3] - ∂(Aᵢ, 3)(x)[1]) / J(Aᵢ.ct)(x)
+  f3(x) = (∂(Aᵢ, 2)(x)[1] - ∂(Aᵢ, 1)(x)[2]) / J(Aᵢ.ct)(x)
   return Con(Aᵢ.ct, [f1, f2, f3])
 end
 curl(Aⁱ::Con) = curl(Cov(Aⁱ))
