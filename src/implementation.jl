@@ -56,6 +56,7 @@ const Cov = Covariant
 struct BasisVector{T<:Component}
   Ai::Vector{T}
 end
+#BV(c::CT, fs::Vector{Function}) = BV([Cov(c, f) for f ∈ fs])
 const BV = BasisVector
 Base.iterate(b::BV) = iterate(b.Ai)
 Base.iterate(b::BV, x) = iterate(b.Ai, x)
@@ -64,7 +65,10 @@ Base.eachindex(b::BV) = eachindex(b.Ai)
 Base.enumerate(b::BV) = enumerate(b.Ai)
 Base.getindex(b::BV, i::Integer) = b.Ai[i]
 
-(A::BasisVector)(x) = return hcat((f(x) for f ∈ A.Ai)...)
+#(A::BasisVector)(x) = hcat((f(x) for f ∈ A.Ai)...)
+function (A::BasisVector)(x) 
+  return hcat((f(x) for f ∈ A.Ai)...)
+end
 #(A::BV{Con})(x) = vcat((f(x)' for f ∈ A.Ai)...)
 #(A::BasisVector{Cov{T}})(x) where {T} = hcat((f(x) for f ∈ A.Ai)...)
 #(A::BasisVector{Con{T}})(x) where {T} = vcat((f(x)' for f ∈ A.Ai)...)
@@ -97,12 +101,12 @@ div(c::CT, Aᵢ::Cov) = div(c, Con(c, Aᵢ))
 div(c::CT, b::BV) = x -> mapreduce(i -> div(c, b.Ai[i], i)(x), +, eachindex(b))
 div(c::CT, fs::Vector{T}) where {T<:Function} = div(c, BV(Con.(fs)))
 
-function curl(c::CT, b::BV{Cov})
+function curl(c::CT, Aᵢ::BV{Cov})
   @assert c.dims == 3
-  f1(x) = (∂(c, b[3])(x)[2] - ∂(c, b[2])(x)[3]) / J(c)(x)
-  f2(x) = (∂(c, b[1])(x)[3] - ∂(c, b[3])(x)[1]) / J(c)(x)
-  f3(x) = (∂(c, b[2])(x)[1] - ∂(c, b[1])(x)[2]) / J(c)(x)
-  return BV(Con.([f1, f2, f3]))
+  f1(x) = (∂(c, Aᵢ[3])(x)[2] - ∂(c, Aᵢ[2])(x)[3]) / J(c)(x)
+  f2(x) = (∂(c, Aᵢ[1])(x)[3] - ∂(c, Aᵢ[3])(x)[1]) / J(c)(x)
+  f3(x) = (∂(c, Aᵢ[2])(x)[1] - ∂(c, Aᵢ[1])(x)[2]) / J(c)(x)
+  return Con(x->[f1(x), f2(x), f3(x)])
 end
 curl(c::CT, Aⁱ::BV{Con}) = curl(c, BV(c, Aⁱ))
 curl(c::CT, fs::Vector{T}) where {T<:Function} = curl(c, BV(Cov.(fs)))

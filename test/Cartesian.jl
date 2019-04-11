@@ -73,9 +73,9 @@ using Test, LinearAlgebra
 
   @testset "curl" begin
     for i ∈ 1:numberofiterations
-      a1, a2, a3 =rand(0:5), rand(0:5), rand(0:5)
-      b1, b2, b3 =rand(0:5), rand(0:5), rand(0:5)
-      c1, c2, c3 =rand(0:5), rand(0:5), rand(0:5)
+      a1, a2, a3 = rand(0:5), rand(0:5), rand(0:5)
+      b1, b2, b3 = rand(0:5), rand(0:5), rand(0:5)
+      c1, c2, c3 = rand(0:5), rand(0:5), rand(0:5)
       fa = x -> x[1]^a1 + x[2]^a2 + x[3]^a3
       fb = x -> x[1]^b1 + x[2]^c2 + x[3]^b3
       fc = x -> x[1]^c1 + x[2]^b2 + x[3]^c3
@@ -86,7 +86,7 @@ using Test, LinearAlgebra
       curlfc(x) = grad(fb)(x)[1] - grad(fa)(x)[2]
       curlf(x) = [curlfa(x), curlfb(x), curlfc(x)]
       x = rand(3)*2 .- 1
-      @test curl(xyz, fs)(x)' ≈ curlf(x)
+      @test curl(xyz, fs)(x) ≈ curlf(x)
     end
   end
 end
