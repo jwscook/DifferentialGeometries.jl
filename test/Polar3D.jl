@@ -27,26 +27,37 @@ using Test, LinearAlgebra
     end
   end
 
-  #@testset "curl" begin
-  #  for i ∈ 1:numberofiterations
-  #    a = [rand(0:5), rand(0:5), rand(0:5)]
-  #    b = [rand(0:5), rand(0:5), rand(0:5)]
-  #    c = [rand(0:5), rand(0:5), rand(0:5)]
-  #    fr = xyz -> sum(polar(xyz).^a)
-  #    fθ = xyz -> sum(polar(xyz).^b)
-  #    fz = xyz -> sum(polar(xyz).^c)
-  #    fs = [fr, fθ, fz]
-  #    function curlf(xyz)
-  #      r, θ, z = polar(xyz)
-  #      curlfr = c[2]*θ^(c[2] - 1) / r - b[3]*z^(b[3]-1)
-  #      curlfθ = a[3]*z^(a[3] - 1) - c[1]*r^(c[1]-1)
-  #      curlfz = (b[1]*θ^b[1] - a[1]*θ^(a[1]-1)) / r
-  #      return [curlfr, curlfθ, curlfz]
-  #    end
-  #    xyz = rand(3) * 2 .- 1
-  #    @test curl(polar, fs)(xyz) ≈ curlf(xyz)
-  #  end
-  #end
-
+  @testset "curl" begin
+    for i ∈ 1:numberofiterations
+      a = [rand(0:5), rand(0:5), rand(0:5)]
+      b = [rand(0:5), rand(0:5), rand(0:5)]
+      c = [rand(0:5), rand(0:5), rand(0:5)]
+      fr = xyz -> sum(polar(xyz).^a)
+      fθ = xyz -> sum(polar(xyz).^b)
+      fz = xyz -> sum(polar(xyz).^c)
+      function curlf(xyz)
+        r, θ, z = polar(xyz)
+        curlfr = c[2]*z^(c[2] - 1) / r - b[3]*θ^(b[3]-1)
+        curlfθ = a[3]*r^(a[3] - 1) - c[1]*z^(c[1]-1)
+        curlfz = (r * b[1]*θ^(b[1] - 1) + θ^b[1] - a[2]*r^(a[2]-1)) / r
+        return [curlfr, curlfθ, curlfz]
+      end
+      xyz = rand(3) .* [4, 2π, 4] .- [2, π, 2]
+      # 
+      # 
+      # 
+      fs = [x->fr(x) / abs(gⁱʲ(polar)(x)[1, 1]), 
+            x->fθ(x) / abs(gⁱʲ(polar)(x)[2, 2]), 
+            x->fz(x) / abs(gⁱʲ(polar)(x)[3, 3])]
+      result = curl(polar, fs)(xyz)
+      g_ij = gᵢⱼ(polar)(xyz)
+      g_rr = g_ij[1, 1]
+      g_θθ = g_ij[2, 2]
+      g_zz = g_ij[3, 3]
+      resultnormalised = result ./ [abs(g_rr), abs(g_θθ), abs(g_zz)]
+      @show result, resultnormalised
+      @test curl(polar, fs)(xyz) ≈ curlf(xyz)
+    end
+  end
 
 end

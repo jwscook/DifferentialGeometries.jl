@@ -36,46 +36,49 @@ function inverse(c::CT, coords::AbstractVector{T}) where {T}
   return solve(x -> c(x) .- coords, c.dims)
 end
 
-abstract type Component end
+abstract type Component{T} end
 
 """Contravariant component Aⁱ"""
-struct Contravariant <: Component
-  f::Function
+struct Contravariant{T<:Function} <: Component{T}
+  f::T
 end
 const Con = Contravariant
 (Aⁱ::Contravariant)(x) = Aⁱ.f(x)
 
-"""Covariant component, Aᵢ """
-struct Covariant <: Component
-  f::Function
+"""Covariant component, Aᵢ"""
+struct Covariant{T<:Function} <: Component{T}
+  f::T
 end
 const Cov = Covariant
 (Aᵢ::Covariant)(x) = Aᵢ.f(x)
 
-"""A Co/Contravariant basis vector"""
-struct BasisVector{T<:Component}
+"""
+A Co/Contravariant basis vector
+  A = Σᵢ Aⁱeᵢ =  Σᵢ Aᵢeⁱ
+"""
+struct VectorSpace{T<:Component}
   Ai::Vector{T}
 end
-#BV(c::CT, fs::Vector{Function}) = BV([Cov(c, f) for f ∈ fs])
-const BV = BasisVector
-Base.iterate(b::BV) = iterate(b.Ai)
-Base.iterate(b::BV, x) = iterate(b.Ai, x)
-Base.length(b::BV) = length(b.Ai)
-Base.eachindex(b::BV) = eachindex(b.Ai)
-Base.enumerate(b::BV) = enumerate(b.Ai)
-Base.getindex(b::BV, i::Integer) = b.Ai[i]
+#VS(c::CT, fs::Vector{Function}) = VS([Cov(c, f) for f ∈ fs])
+const VS = VectorSpace
+Base.iterate(b::VS) = iterate(b.Ai)
+Base.iterate(b::VS, x) = iterate(b.Ai, x)
+Base.length(b::VS) = length(b.Ai)
+Base.eachindex(b::VS) = eachindex(b.Ai)
+Base.enumerate(b::VS) = enumerate(b.Ai)
+Base.getindex(b::VS, i::Integer) = b.Ai[i]
 
-#(A::BasisVector)(x) = hcat((f(x) for f ∈ A.Ai)...)
-function (A::BasisVector)(x) 
+#(A::VectorSpace)(x) = hcat((f(x) for f ∈ A.Ai)...)
+function (A::VectorSpace)(x)
   return hcat((f(x) for f ∈ A.Ai)...)
 end
-#(A::BV{Con})(x) = vcat((f(x)' for f ∈ A.Ai)...)
-#(A::BasisVector{Cov{T}})(x) where {T} = hcat((f(x) for f ∈ A.Ai)...)
-#(A::BasisVector{Con{T}})(x) where {T} = vcat((f(x)' for f ∈ A.Ai)...)
+#(A::VS{Con})(x) = vcat((f(x)' for f ∈ A.Ai)...)
+#(A::VectorSpace{Cov{T}})(x) where {T} = hcat((f(x) for f ∈ A.Ai)...)
+#(A::VectorSpace{Con{T}})(x) where {T} = vcat((f(x)' for f ∈ A.Ai)...)
 
 ∇(f::T) where {T<:Function} = x -> ForwardDiff.gradient(f, x)
 ∇(c::CT, i::Integer) = Cov(x -> ForwardDiff.gradient(y -> c(y, i), x))
-∇(c::CT) = BV([∇(c, i) for i ∈ 1:c.dims])
+∇(c::CT) = VS([∇(c, i) for i ∈ 1:c.dims])
 ∂(c::CT, f::Function) = x -> inv(∇(c)(x)) * ∇(f)(x)
 ∂(c::CT, Aᵢ::Cov) = x -> inv(∇(c)(x)) * ∇(y->Aᵢ(y))(x)
 #eⁱ = ∇
@@ -91,31 +94,31 @@ J(a::CT, b::CT=a) = x -> sqrt(det(gᵢⱼ(a, b)(x)))
 Con(c::CT, Aᵢ::Cov) = x -> gⁱʲ(c)(x) * Aᵢ(x)
 Cov(c::CT, Aⁱ::Con) = x -> gᵢⱼ(c)(x) * Aⁱ(x)
 
-BV(c::CT, Aᵢs::BV{Cov}) = BV([Con(c, Aᵢ) for Aᵢ ∈ Aᵢs])
-BV(c::CT, Aⁱs::BV{Con}) = BV([Cov(c, Aⁱ) for Aⁱ ∈ Aⁱs])
+VS(c::CT, Aᵢs::VS{Cov}) = VS([Con(c, Aᵢ) for Aᵢ ∈ Aᵢs])
+VS(c::CT, Aⁱs::VS{Con}) = VS([Cov(c, Aⁱ) for Aⁱ ∈ Aⁱs])
 
 function div(c::CT, Aⁱ::Contravariant, i::Integer)
   return x -> ∂(c, y -> Aⁱ(y) * J(c)(y))(x)[i] / J(c)(x)
 end
 div(c::CT, Aᵢ::Cov) = div(c, Con(c, Aᵢ))
-div(c::CT, b::BV) = x -> mapreduce(i -> div(c, b.Ai[i], i)(x), +, eachindex(b))
-div(c::CT, fs::Vector{T}) where {T<:Function} = div(c, BV(Con.(fs)))
+div(c::CT, b::VS) = x -> mapreduce(i -> div(c, b.Ai[i], i)(x), +, eachindex(b))
+div(c::CT, fs::Vector{T}) where {T<:Function} = div(c, VS(Con.(fs)))
 
-function curl(c::CT, Aᵢ::BV{Cov})
+function curl(c::CT, Aᵢ::VS{Cov})
   @assert c.dims == 3
-  f1(x) = (∂(c, Aᵢ[3])(x)[2] - ∂(c, Aᵢ[2])(x)[3]) / J(c)(x)
-  f2(x) = (∂(c, Aᵢ[1])(x)[3] - ∂(c, Aᵢ[3])(x)[1]) / J(c)(x)
-  f3(x) = (∂(c, Aᵢ[2])(x)[1] - ∂(c, Aᵢ[1])(x)[2]) / J(c)(x)
-  return Con(x->[f1(x), f2(x), f3(x)])
+  f1(x) = (∂(c, Aᵢ[3])(x)[2] - ∂(c, Aᵢ[2])(x)[3])
+  f2(x) = (∂(c, Aᵢ[1])(x)[3] - ∂(c, Aᵢ[3])(x)[1])
+  f3(x) = (∂(c, Aᵢ[2])(x)[1] - ∂(c, Aᵢ[1])(x)[2])
+  return Con(x -> [f1(x), f2(x), f3(x)] ./ J(c)(x))
 end
-curl(c::CT, Aⁱ::BV{Con}) = curl(c, BV(c, Aⁱ))
-curl(c::CT, fs::Vector{T}) where {T<:Function} = curl(c, BV(Cov.(fs)))
+curl(c::CT, Aⁱ::VS{Con}) = curl(c, VS(c, Aⁱ))
+curl(c::CT, fs::Vector{T}) where {T<:Function} = curl(c, VS(Cov.(fs)))
 
-function dot(c::CT, a::BV{Con}, b::BV{Cov})
+function dot(c::CT, a::VS{Con}, b::VS{Cov})
   error("Untested")
   return x -> mapreduce(a.Ai(x) * b.Ai(), +, 1:c.dims)
 end
-dot(c::CT, a::BV{Cov}, b::BV{Con}) = dot(c, b, a)
-dot(c::CT, a::BV{Con}, b::BV{Con}) = dot(c, a, BV(c, b))
-dot(c::CT, a::BV{Cov}, b::BV{Cov}) = dot(c, a, BV(c, b))
+dot(c::CT, a::VS{Cov}, b::VS{Con}) = dot(c, b, a)
+dot(c::CT, a::VS{Con}, b::VS{Con}) = dot(c, a, VS(c, b))
+dot(c::CT, a::VS{Cov}, b::VS{Cov}) = dot(c, a, VS(c, b))
 
