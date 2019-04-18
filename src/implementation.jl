@@ -1,146 +1,201 @@
-using ForwardDiff, LinearAlgebra, Combinatorics, NLsolve, Optim
+using ForwardDiff, LinearAlgebra, NLsolve
 
-import Base.length
-import Base.iterate
-import Base.eachindex
-import Base.enumerate
-import Base.getindex
-import LinearAlgebra.dot
-import LinearAlgebra.cross
 
-abstract type AbstractTransform end
+# η = η⊥ ∇Ψ + η∧ ∇χ + ηb ∇ξ
+# we want η to be a vector variable
+# here we want ηi ui to be the ith component of η
+# we want ηi to be a scalar variable
+# ui needs to be a Co- or Contra-variant vector
 
-struct CoordinateTransform{T<:Function} <: AbstractTransform
-  f::T
-  dims::Int
+# Covariant components Aᵢ 
+# Contravariant components Aⁱ
+
+abstract type Variance end
+struct Covariant <: Variance end
+struct Contravariant <: Variance end
+
+abstract type AbstractCoordinateTransform{V<:Variance, D} end
+const Act = AbstractCoordinateTransform # short hand
+
+struct CoordinateTransform{V<:Variance, D, F} <: AbstractCoordinateTransform{V, D}
+  f::F
 end
-function CoordinateTransform(fx::Vector{T}) where {T}
-  return CoordinateTransform(x -> [f(x) for f ∈ fx], length(fx))
+(ct::CoordinateTransform)(u) = ct.f(u)
+Base.:\(c::Act, x) = invert(c, x)
+Base.length(c::CoordinateTransform{<:Variance, D}) where {D} = D
+
+const ToCartesian = CoordinateTransform{Covariant}
+const FromCartesian = CoordinateTransform{Contravariant}
+ToCartesian(f::F, D::Integer) where {F} = CoordinateTransform{Covariant, D, F}(f)
+FromCartesian(f::F, D::Integer) where {F} = CoordinateTransform{Contravariant, D, F}(f)
+
+abstract type AbstractScalar{V<:Variance, D} <: Function end
+struct Scalar{V<:Variance, D, F} <: AbstractScalar{V, D}
+  f::F
+  c::CoordinateTransform{V, D}
 end
-const CT = CoordinateTransform
-length(c::CT) = c.dims
-(c::CT)(x, i::Integer) = c.f(x)[i]
-(c::CT)(x) = c.f(x)
-Base.:\(c::CT, x) = inverse(c, x)
+(s::Scalar)(x) = s.f(x)
 
-function solve(f::Function, dims::Integer; ic::AbstractVector=ones(dims),
-    rtol=2*eps(), atol=eps())
-  result = NLsolve.nlsolve(f, ic, autodiff=:forward)
-  return result.zero
+J⃗(c::Act, x, ::Type{Covariant}) = ForwardDiff.jacobian(c, x)
+J⃗(c::Act, x, ::Type{Contravariant}) = inv(ForwardDiff.jacobian(c, x))
+J⃗(c::Act{V}, x) where {V<:Variance} = J⃗(c, x, V)
+
+covariantbasis(c::Act, x) = J⃗(c, x, Covariant)
+contravariantbasis(c::Act, x) = J⃗(c, x, Contravariant)
+
+∇(f, x, ::Type{Covariant}) = ForwardDiff.jacobian(f, x)
+∇(f, x, ::Type{Contravariant}) = inv(ForwardDiff.jacobian(f, x))
+
+gᵢⱼ(c::AbstractCoordinateTransform, x) = (j = J⃗(c, x); return j' * j)
+gⁱʲ(c::AbstractCoordinateTransform, x) = inv(gᵢⱼ(c, x))
+
+J(f, x) = sqrt(det(gᵢⱼ(f, x)))
+jacobi(f, x) = J⃗(f, x)
+jacobian(f, x) = J(f, x)
+
+function invert(f::F, x, initial_x=ones(size(x))) where {F}
+  f!(m, y) = (m .= f(y) .- x; return nothing)
+  y = NLsolve.nlsolve(f!, initial_x, autodiff=:forward)
+  return y.zero
 end
-function inverse(fs::Vector{T}, coords::AbstractVector) where {T<:Function}
-  g(x) = [f(x) for f ∈ fs]
-  return solve(x -> g(x) .- coords, length(fs))
+
+invert(f::F) where {F} = x -> invert(f, x)
+
+struct VectorField{V<:Variance, D, W<:Variance, F,
+                   C<:AbstractCoordinateTransform{<:Variance, D}}
+  f::F
+  c::C
 end
-function inverse(c::CT, coords::AbstractVector{T}) where {T}
-  return solve(x -> c(x) .- coords, c.dims)
+
+const ContravariantVector = VectorField{Contravariant}
+const CovariantVector = VectorField{Covariant}
+
+J⃗(v::VectorField, x, ::Type{V}) where {V<:Variance} = J⃗(v.c, x, V)
+dl(c::AbstractCoordinateTransform, x, ::Type{Covariant}) = sqrt.(diag(gⁱʲ(c, x)))
+dl(c::AbstractCoordinateTransform, x, ::Type{Contravariant}) = sqrt.(diag(gᵢⱼ(c, x)))
+dl(v::VectorField{V}, x) where {V<:Variance} = dl(v.c, x, V)
+
+function VectorField{V}(f::F, c::C, construct_from_unit_basis=false) where {
+    V<:Variance, D, W<:Variance, F, C<:AbstractCoordinateTransform{W, D}}
+  g(x) = construct_from_unit_basis ? f(x) ./ dl(c, x, V) : f(x)
+  return VectorField{V, D, W, typeof(g), C}(g, c)
+end
+(v::VectorField)(x) = v.f(x)
+
+(v::VectorField)(x, normalise::Bool) = normalise ? v(x) .* dl(v, x) : v(x)
+
+function ContravariantVector(Aⱼ::CovariantVector)
+  Aⁱ(x) = gⁱʲ(Aⱼ, x) * Aⱼ(x)
+  return ContravariantVector(Aⁱ, Aⱼ.c)
+end
+function CovariantVector(Aʲ::ContravariantVector)
+  Aᵢ(x) = gᵢⱼ(Aʲ, x) * Aʲ(x)
+  return CovariantVector(Aᵢ, Aʲ.c)
+end
+CovariantVector(v::CovariantVector) = v
+ContravariantVector(v::ContravariantVector) = v
+Base.convert(Aⁱ::ContravariantVector) = CovariantVector(Aⁱ)
+Base.convert(Aᵢ::CovariantVector) = ContravariantVector(Aᵢ)
+Base.length(v::VectorField{<:Variance, D}) where {D} = D
+
+dV(a) = J(a)
+dV(a, b) = J(a, b)
+
+function dS(c::Act{<:Variance, 3})
+  function f(x)
+    g_ij = gᵢⱼ(c, x)
+    g(n, m) = sqrt(g_ij[n, n] * g_ij[m, m] - g[n, m]^2)
+    return [g(filter(i -> i != k, 1:3)...) for k ∈ 1:3]
+  end
+  return CovariantVector(f, c, false)
 end
 
-abstract type Component{T} end
-
-"""Contravariant component Aⁱ"""
-struct Contravariant{T<:Function} <: Component{T}
-  f::T
+for op ∈ (:J, :gⁱʲ, :gᵢⱼ)
+  @eval $op(v::VectorField, x) = $op(v.c, x)
 end
-const Con = Contravariant
 
-raiseindex(A::Covariant) = [x -> gⁱʲ(A.ct)(x) * Aᵢ(x) for Aᵢ ∈ A]
-lowerindex(A::Contravariant) = [x -> gᵢⱼ(A.ct)(x) * Aⁱ(x) for Aⁱ ∈ A]
-
-"""A Co/Contravariant basis vector"""
-Base.iterate(a::Component) = iterate(a.i)
-Base.iterate(a::Component, x) = iterate(a.i, x)
-Base.length(a::Component) = length(a.i)
-Base.eachindex(a::Component) = eachindex(a.i)
-Base.enumerate(a::Component) = enumerate(a.i)
-Base.getindex(a::Component, i::Integer) = a.i[i]
-
-(Aⁱ::Con)(x) = hcat((f(x) for f ∈ Aⁱ.i)...)
-(Aᵢ::Cov)(x) = vcat((f(x)' for f ∈ Aᵢ.i)...)
-# [∂x r, ∂x θ;
-#  ∂y r, ∂y θ]
-
-∇(f::T) where {T<:Function} = x -> ForwardDiff.gradient(f, x)
-∇(c::CT, i::Integer) = x -> ForwardDiff.gradient(y -> c(y, i), x)
-#∇(c::CT) = Cov(c, [∇(y -> c(y, i)) for i ∈ 1:c.dims])
-∇(c::CT) = Cov(c, [x -> 1 for i ∈ 1:c.dims])
-=======
-"""Covariant component, Aᵢ"""
-struct Covariant{T<:Function} <: Component{T}
-  f::T
+function ∇(f::T, c::Act, construct_from_unit_basis=false) where {T}
+  return ContravariantVector(x->∇(f, x), c, construct_from_unit_basis)
 end
-const Cov = Covariant
-(Aᵢ::Covariant)(x) = Aᵢ.f(x)
+∇(f::T, x) where {T} = ForwardDiff.jacobian(f, x)
+∂(f::T, x) where {T} = inv(∇(f, x))
+
+for op in (:+, :-)
+  Vs = (ContravariantVector, CovariantVector)
+  for (V1, V2) ∈ (Vs, reverse(Vs))
+    @eval function Base.$(op)(a::$V1, b::$V2)
+      @assert a.c == b.c
+      return $V1(x->$op(a(x), $V1(b(x))), a.c)
+    end
+  end
+end
+import LinearAlgebra: dot, cross
+dot(Aⁱ::ContravariantVector, Bᵢ::CovariantVector) = x->dot(Aⁱ(x), Bᵢ(x))
+dot(Aᵢ::CovariantVector, Bⁱ::ContravariantVector) = dot(Bⁱ, Aᵢ)
+dot(A::T, B::T) where {V, T<:VectorField{V}} = dot(A, convert(B))
+function cross(Aⁱ::ContravariantVector, Bⁱ::ContravariantVector)
+  @assert Aⁱ.c == Bⁱ.c
+  return CovariantVector(x -> cross(Aⁱ(x), Bⁱ(x)) ./ J(Aⁱ, x), Aⁱ.c)
+end
+function cross(Aᵢ::CovariantVector, Bᵢ::CovariantVector)
+  @assert Aᵢ.c == Bᵢ.c
+  return ContravariantVector(x -> cross(Aᵢ(x), Bᵢ(x)) ./ J(Aᵢ, x), Aᵢ.c)
+end
+cross(A::T, B::T) where {V, T<:VectorField{V}} = cross(A, convert(B))
 
 """
-A Co/Contravariant basis vector
-  A = Σᵢ Aⁱeᵢ =  Σᵢ Aᵢeⁱ
+grad(ϕ) = uⁱ (∂ᵢ ϕ)
 """
-struct VectorSpace{T<:Component}
-  Ai::Vector{T}
+function grad(ϕ::F, c::Act{Covariant}) where {F}
+  return CovariantVector(x->ForwardDiff.gradient(ϕ, x), c, false)
 end
-#VS(c::CT, fs::Vector{Function}) = VS([Cov(c, f) for f ∈ fs])
-const VS = VectorSpace
-Base.iterate(b::VS) = iterate(b.Ai)
-Base.iterate(b::VS, x) = iterate(b.Ai, x)
-Base.length(b::VS) = length(b.Ai)
-Base.eachindex(b::VS) = eachindex(b.Ai)
-Base.enumerate(b::VS) = enumerate(b.Ai)
-Base.getindex(b::VS, i::Integer) = b.Ai[i]
-
-#(A::VectorSpace)(x) = hcat((f(x) for f ∈ A.Ai)...)
-function (A::VectorSpace)(x)
-  return hcat((f(x) for f ∈ A.Ai)...)
+function grad(ϕ::F, c::Act{Contravariant}) where {F}
+  return CovariantVector(x->J⃗(c, x)' * ForwardDiff.gradient(ϕ, x), c, false)
 end
-#(A::VS{Con})(x) = vcat((f(x)' for f ∈ A.Ai)...)
-#(A::VectorSpace{Cov{T}})(x) where {T} = hcat((f(x) for f ∈ A.Ai)...)
-#(A::VectorSpace{Con{T}})(x) where {T} = vcat((f(x)' for f ∈ A.Ai)...)
+grad(s::Scalar) = grad(s.f, s.c)
 
-∇(f::T) where {T<:Function} = x -> ForwardDiff.gradient(f, x)
-∇(c::CT, i::Integer) = Cov(x -> ForwardDiff.gradient(y -> c(y, i), x))
-∇(c::CT) = VS([∇(c, i) for i ∈ 1:c.dims])
->>>>>>> master
-∂(c::CT, f::Function) = x -> inv(∇(c)(x)) * ∇(f)(x)
-#∂(Aᵢ::Cov) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ(y))(x)
-∂(Aᵢ::Cov, i::Integer) = x -> inv(∇(Aᵢ.ct)(x)) * ∇(y->Aᵢ[i](y))(x)
-#eⁱ = ∇
-#eᵢ = ∂
-
-gⁱʲ(a::CT, b::CT, i::Integer, j::Integer) = x -> dot(∇(a, i)(x), ∇(b, j)(x))
-gⁱʲ(a::CT, b::CT=a) = x -> ∇(a)(x)' * ∇(b)(x)
-
-gᵢⱼ(a::CT, b::CT=a) = x -> inv(gⁱʲ(a, b)(x))
-
-J(a::CT, b::CT=a) = x -> sqrt(det(gᵢⱼ(a, b)(x)))
-
-Con(c::CT, Aᵢ::Cov) = x -> gⁱʲ(c)(x) * Aᵢ(x)
-Cov(c::CT, Aⁱ::Con) = x -> gᵢⱼ(c)(x) * Aⁱ(x)
-
-VS(c::CT, Aᵢs::VS{Cov}) = VS([Con(c, Aᵢ) for Aᵢ ∈ Aᵢs])
-VS(c::CT, Aⁱs::VS{Con}) = VS([Cov(c, Aⁱ) for Aⁱ ∈ Aⁱs])
-
-function div(Aⁱ::Contravariant, i::Integer)
-  return x -> (∂(Aⁱ.ct, y -> Aⁱ[i](y)[i] * J(Aⁱ.ct)(y))(x) / J(Aⁱ.ct)(x))[i]
+import Base.div
+"""
+div(A⃗) = ∂ᵢ(J * Aⁱ) / J
+"""
+div(v::ContravariantVector) = Scalar(x->div(v, x), v.c)
+function div(v::ContravariantVector{D, <:Covariant}, x) where {D}
+  # v.c is CoordinateTransform{Covariant, D}
+  return sum(diag(∇(y->J(v, y) * v(y), x, Covariant))) / J(v, x)
 end
-div(c::CT, Aᵢ::Cov) = div(c, Con(c, Aᵢ))
-div(c::CT, b::VS) = x -> mapreduce(i -> div(c, b.Ai[i], i)(x), +, eachindex(b))
-div(c::CT, fs::Vector{T}) where {T<:Function} = div(c, VS(Con.(fs)))
-
-function curl(c::CT, Aᵢ::VS{Cov})
-  @assert c.dims == 3
-  f1(x) = (∂(c, Aᵢ[3])(x)[2] - ∂(c, Aᵢ[2])(x)[3])
-  f2(x) = (∂(c, Aᵢ[1])(x)[3] - ∂(c, Aᵢ[3])(x)[1])
-  f3(x) = (∂(c, Aᵢ[2])(x)[1] - ∂(c, Aᵢ[1])(x)[2])
-  return Con(x -> [f1(x), f2(x), f3(x)] ./ J(c)(x))
+function div(v::ContravariantVector{D, <:Contravariant}, x) where {D}
+  # v.c is CoordinateTransform{Contravariant, D}
+  return sum(diag(∇(x->v(x) * J(v.c, x), x, Covariant) * J⃗(v, x, Contravariant))) / J(v, x)
 end
-curl(c::CT, Aⁱ::VS{Con}) = curl(c, VS(c, Aⁱ))
-curl(c::CT, fs::Vector{T}) where {T<:Function} = curl(c, VS(Cov.(fs)))
 
-function dot(c::CT, a::VS{Con}, b::VS{Cov})
-dot(a::Cov, b::Con) = dot(b, a)
-dot(a::Con, b::Con) = dot(a, Cov(b))
-dot(a::Cov, b::Cov) = dot(a, Con(b))
-dot(c::CT, a::VS{Cov}, b::VS{Con}) = dot(c, b, a)
-dot(c::CT, a::VS{Con}, b::VS{Con}) = dot(c, a, VS(c, b))
-dot(c::CT, a::VS{Cov}, b::VS{Cov}) = dot(c, a, VS(c, b))
+div(v::CovariantVector) = div(ContravariantVector(v))
+div(v::CovariantVector, x) = div(ContravariantVector(v), x)
+
+∇o(a) = div(a)
+∇o(a, b) = div(a, b)
+
+"""
+curl(A⃗) = ∑ₖ e⃗ₖ (∂ᵢAⱼ - ∂ⱼAᵢ) / J
+"""
+function curl(v::CovariantVector{3, <:Covariant}, x::T) where {T}
+  ∂ⱼAᵢ = ∇(v, x, Covariant)
+  ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
+  return ϵijk∂ⱼAᵢ ./ J(v, x)
+end
+function curl(v::CovariantVector{3, <:Contravariant}, x::T) where {T}
+  ∂ⱼAᵢ = ∇(v, x, Covariant) * J⃗(v, x, Contravariant)
+  ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
+  return ϵijk∂ⱼAᵢ ./ J(v, x)
+end
+
+curl(v::CovariantVector) = ContravariantVector(x->curl(v, x), v.c)
+curl(f::F, c::Act) where {F} = curl(CovariantVector(f, c, true))
+curl(v::ContravariantVector) = curl(CovariantVector(v))
+curl(v::ContravariantVector, x) = curl(CovariantVector(v), x)
+
+∇x(a) = curl(a)
+∇x(a, b) = curl(a, b)
+
+vectorlaplacian(v::CovariantVector) = grad(div(v)) - curl(curl(v))
+vectorlaplacian(v::CovariantVector, x) = grad(div(v))(x) - curl(curl(v))(x)
 
