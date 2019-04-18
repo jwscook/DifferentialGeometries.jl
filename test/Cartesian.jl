@@ -87,20 +87,7 @@ using Test, LinearAlgebra
       curlfc(x) = grad(fb)(x)[1] - grad(fa)(x)[2]
       curlf(x) = [curlfa(x), curlfb(x), curlfc(x)]
       x = rand(3)*2 .- 1
-
-      Aᵢ = Cov(xyz, fs)
-      @show ∇(Aᵢ.ct)(x)
-      @show inv(∇(Aᵢ.ct)(x))
-      @show Aᵢ[1](x)
-      @show (∇(y->Aᵢ[1](y)))(x)
-      @show ∂(Aᵢ, 1)(x)
-      @show ∂(Aᵢ, 2)(x)
-      @show ∂(Aᵢ, 3)(x)
-      @show ∇(y->Aᵢ(y))(x)
-      @show ∇(y->Aᵢ(y))(x)
-      @show curlf(x)
-      @show curl(xyz, fs)(x)
-      @test curl(xyz, fs)(x)' ≈ curlf(x)
+      @test curl(xyz, fs)(x) ≈ curlf(x)
     end
   end
 #
