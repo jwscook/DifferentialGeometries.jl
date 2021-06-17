@@ -47,8 +47,8 @@ J⃗(c::Act{V}, x) where {V<:Variance} = J⃗(c, x, V)
 covariantbasis(c::Act, x) = J⃗(c, x, Covariant)
 contravariantbasis(c::Act, x) = J⃗(c, x, Contravariant)
 
-gᵢⱼ(c::AbstractCoordinateTransform, x) = (j = J⃗(c, x); return j' * j)
-gⁱʲ(c::AbstractCoordinateTransform, x) = inv(gᵢⱼ(c, x))
+gᵢⱼ(c::Act, x) = (j = J⃗(c, x); return j' * j)
+gⁱʲ(c::Act, x) = inv(gᵢⱼ(c, x))
 
 J(f, x) = sqrt(det(gᵢⱼ(f, x)))
 jacobi(f, x) = J⃗(f, x)
@@ -106,11 +106,26 @@ function CovariantVector(Aʲ::ContravariantVector)
 end
 CovariantVector(v::CovariantVector) = v
 ContravariantVector(v::ContravariantVector) = v
-Base.convert(::Type{Contravariant}) = Covariant
-Base.convert(::Type{Covariant}) = Contravariant
-Base.convert(Aⁱ::ContravariantVector) = CovariantVector(Aⁱ)
-Base.convert(Aᵢ::CovariantVector) = ContravariantVector(Aᵢ)
-Base.length(v::VectorField{<:Variance, D}) where {D} = D
+
+import Base: convert
+convert(::Type{Contravariant}) = Covariant
+convert(::Type{Covariant}) = Contravariant
+convert(Aⁱ::ContravariantVector) = CovariantVector(Aⁱ)
+convert(Aᵢ::CovariantVector) = ContravariantVector(Aᵢ)
+convert(v::VectorField{V,D,W,F,C}, c::C) where {V,D,W,F,C} = v
+
+const Cov = Covariant
+const Con = Contravariant
+changecoords(a::Act{Cov,D}, b::Act{Cov,D}) where D = r -> a \ b(r)
+changecoords(a::Act{Con,D}, b::Act{Cov,D}) where D = r -> a(b(r))
+changecoords(a::Act{Cov,D}, b::Act{Con,D}) where D = r -> a \ (b \ r)
+changecoords(a::Act{Con,D}, b::Act{Con,D}) where D = r -> a(b \ r)
+function convert(v::VectorField{V,D,<:Variance}, c::Act{<:Variance,D}
+    ) where {V<:Variance, D}
+  return VectorField{V}(r -> v(changecoords(v.c, c)(r), true), c, true)
+end
+
+length(v::VectorField{<:Variance, D}) where {D} = D
 
 dV(a) = J(a)
 dV(a, b) = J(a, b)
