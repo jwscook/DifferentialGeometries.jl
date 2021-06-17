@@ -1,6 +1,9 @@
 #include("../src/implementation.jl")
 using DifferentialGeometries
-using Test, LinearAlgebra, ForwardDiff
+using ForwardDiff, LinearAlgebra, Random, Test
+
+Random.seed!(0)
+
 
 @testset "Cartesian" begin
   x = [π, exp(1), √2]
@@ -40,19 +43,25 @@ end
 
     @test invert(f)(r) ≈ f⁻¹(r)
     @test invert(f⁻¹)(r) ≈ f(r)
+
+    v1 = ContravariantVector(z->[prod(z), prod(z)^2, prod(z)^3], f, true)
+    v2 = ContravariantVector(z->[prod(z), prod(z)^2, prod(z)^3], f⁻¹, true)
+    @test v1(r) ≈ v2(r)
+    v1 = CovariantVector(z->[prod(z), prod(z)^2, prod(z)^3], f, true)
+    v2 = CovariantVector(z->[prod(z), prod(z)^2, prod(z)^3], f⁻¹, true)
+    @test v1(r) ≈ v2(r)
   end
 
   @testset "metrics, jacobians, line elements" begin
     r = [π, exp(1), √2] # r, θ, z
-    x = f(r) # x, y, z
     @test gᵢⱼ(f, r) ≈ inv(gⁱʲ(f, r))
-    @test gᵢⱼ(f⁻¹, x) ≈ inv(gⁱʲ(f⁻¹, x))
-    @test gᵢⱼ(f⁻¹, x) ≈ gᵢⱼ(f, r)
-    @test gⁱʲ(f⁻¹, x) ≈ gⁱʲ(f, r)
-    @test J(f⁻¹, x) ≈ J(f, r)
-    @test J⃗(f⁻¹, x) ≈ J⃗(f, r)
-    @test dl(f⁻¹, x, Covariant) ≈ dl(f, r, Covariant)
-    @test dl(f⁻¹, x, Contravariant) ≈ dl(f, r, Contravariant)
+    @test gᵢⱼ(f⁻¹, r) ≈ inv(gⁱʲ(f⁻¹, r))
+    @test gᵢⱼ(f⁻¹, r) ≈ gᵢⱼ(f, r)
+    @test gⁱʲ(f⁻¹, r) ≈ gⁱʲ(f, r)
+    @test J(f⁻¹, r) ≈ J(f, r)
+    @test J⃗(f⁻¹, r) ≈ J⃗(f, r)
+    @test dl(f⁻¹, r, Covariant) ≈ dl(f, r, Covariant)
+    @test dl(f⁻¹, r, Contravariant) ≈ dl(f, r, Contravariant)
   end
 
   @testset "unit basis / physical units expressions" begin
@@ -85,7 +94,8 @@ end
     @assert f⁻¹(X) ≈ R
     (typeof(ct) <: FromCartesian) && @assert ξ ≈ X
     (typeof(ct) <: ToCartesian) && @assert ξ ≈ R
-    return (R,X,ξ,fR)
+    #return (R,X,ξ,fR)
+    return (R,X,R,fR)
   end
 
   @testset "metrics, jacobians, line elements" begin
@@ -131,7 +141,7 @@ end
     for ct ∈ (f, f⁻¹), _ in 1:10
       (R,X,ξ,fR) = getcoordsandtransforms(ct)
 
-      v = CovariantVector(z->(z=fR(z); [z[3] - 2z[2] * z[1], 0, 0]), ct, true)
+      v = CovariantVector(z->[z[3] - 2z[2] * z[1], 0, 0], ct, true)
       @test curl(v)(ξ, true) ≈ [0, 1, 2]
 
       a, b = rand(3), rand(2:5, 3, 3)
@@ -208,7 +218,7 @@ end
       dpdx = - x * (z - Z0) / sqrt(x^2 + y^2) / r^2
       dpdy = - y * (z - Z0) / sqrt(x^2 + y^2) / r^2
       dpdz = (sqrt(x^2 + y^2) - R0) / r^2
-      @test J⃗(f⁻¹, xyz, Covariant) ≈ [drdx drdy drdz;
+      @test J⃗(f⁻¹, [r, ϕ, θ], Covariant) ≈ [drdx drdy drdz;
                                       dtdx dtdy dtdz;
                                       dpdx dpdy dpdz]
     end
@@ -237,7 +247,7 @@ end
         g_ij = Array{Float64}(I, 3, 3)
         g_ij[2, 2] = R^2
         g_ij[3, 3] = r^2
-        @test gᵢⱼ(f⁻¹, xyz) ≈ g_ij
+        @test gᵢⱼ(f⁻¹, [r, ϕ, θ]) ≈ g_ij
       end
     end
   end
@@ -250,7 +260,7 @@ end
       r, ϕ, θ = rϕθ
       R = R0 + r * cos(θ)
       @test J(f, rϕθ) ≈ r * R
-      @test J(f⁻¹, xyz) ≈ r * R
+      @test J(f⁻¹, rϕθ) ≈ r * R
     end
   end
 

@@ -1,7 +1,7 @@
 using ForwardDiff, LinearAlgebra, NLsolve
 
 
-# η = η⊥ ∇Ψ + η∧ ∇χ + ηb ∇ξ
+# η = ηₐ ∇a + ηᵦ ∇β + ηᵧ∇γ
 # we want η to be a vector variable
 # here we want ηi ui to be the ith component of η
 # we want ηi to be a scalar variable
@@ -36,15 +36,16 @@ struct Scalar{V<:Variance, D, F} <: AbstractScalar{V, D}
 end
 (s::Scalar)(x) = s.f(x)
 
-J⃗(c::Act, x, ::Type{Covariant}) = ForwardDiff.jacobian(c, x)
-J⃗(c::Act, x, ::Type{Contravariant}) = inv(ForwardDiff.jacobian(c, x))
+J⃗(c::Act{V}, r, ::Type{V}) where {V<:Covariant} = ForwardDiff.jacobian(c, r)
+J⃗(c::Act{Covariant}, r, ::Type{Contravariant}) = inv(J⃗(c, r, Covariant))
+function J⃗(c::Act{V}, r, ::Type{V}) where {V<:Contravariant}
+  return inv(ForwardDiff.jacobian(c.f, c \ r))
+end
+J⃗(c::Act{Contravariant}, r, ::Type{Covariant}) = inv(J⃗(c, r, Contravariant))
 J⃗(c::Act{V}, x) where {V<:Variance} = J⃗(c, x, V)
 
 covariantbasis(c::Act, x) = J⃗(c, x, Covariant)
 contravariantbasis(c::Act, x) = J⃗(c, x, Contravariant)
-
-∇(f, x, ::Type{Covariant}) = ForwardDiff.jacobian(f, x)
-∇(f, x, ::Type{Contravariant}) = inv(ForwardDiff.jacobian(f, x))
 
 gᵢⱼ(c::AbstractCoordinateTransform, x) = (j = J⃗(c, x); return j' * j)
 gⁱʲ(c::AbstractCoordinateTransform, x) = inv(gᵢⱼ(c, x))
@@ -53,6 +54,13 @@ J(f, x) = sqrt(det(gᵢⱼ(f, x)))
 jacobi(f, x) = J⃗(f, x)
 jacobian(f, x) = J(f, x)
 
+function invert(f::F, x::ForwardDiff.Dual, initial_x=ones(size(x))) where {F}
+  return invert(f, ForwardDiff.value(x), initial_x)
+end
+function invert(f::F, x::AbstractArray{<:ForwardDiff.Dual, N},
+    initial_x=ones(size(x))) where {F, N}
+  return invert(f, ForwardDiff.value.(x), initial_x)
+end
 function invert(f::F, x, initial_x=ones(size(x))) where {F}
   f!(m, y) = (m .= f(y) .- x; return nothing)
   y = NLsolve.nlsolve(f!, initial_x, autodiff=:forward)
@@ -60,6 +68,10 @@ function invert(f::F, x, initial_x=ones(size(x))) where {F}
 end
 
 invert(f::F) where {F} = x -> invert(f, x)
+function invert(f::Act{V,D}) where {V<:Variance, D}
+  f⁻¹(x) = invert(f, x)
+  return CoordinateTransform{convert(V),D,typeof(f⁻¹)}(f⁻¹)
+end
 
 struct VectorField{V<:Variance, D, W<:Variance, F,
                    C<:AbstractCoordinateTransform{<:Variance, D}}
@@ -94,6 +106,8 @@ function CovariantVector(Aʲ::ContravariantVector)
 end
 CovariantVector(v::CovariantVector) = v
 ContravariantVector(v::ContravariantVector) = v
+Base.convert(::Type{Contravariant}) = Covariant
+Base.convert(::Type{Covariant}) = Contravariant
 Base.convert(Aⁱ::ContravariantVector) = CovariantVector(Aⁱ)
 Base.convert(Aᵢ::CovariantVector) = ContravariantVector(Aᵢ)
 Base.length(v::VectorField{<:Variance, D}) where {D} = D
@@ -119,6 +133,9 @@ function ∇(f::T, c::Act, construct_from_unit_basis=false) where {T}
 end
 ∇(f::T, x) where {T} = ForwardDiff.jacobian(f, x)
 ∂(f::T, x) where {T} = inv(∇(f, x))
+
+∇ᵢⱼ(v::VectorField, x) = ForwardDiff.jacobian(f, x)
+∇ⁱʲ(v::VectorField, x) = inv(ForwardDiff.jacobian(f, x))
 
 for op in (:+, :-)
   Vs = (ContravariantVector, CovariantVector)
@@ -150,7 +167,7 @@ function grad(ϕ::F, c::Act{Covariant}) where {F}
   return CovariantVector(x->ForwardDiff.gradient(ϕ, x), c, false)
 end
 function grad(ϕ::F, c::Act{Contravariant}) where {F}
-  return CovariantVector(x->J⃗(c, x)' * ForwardDiff.gradient(ϕ, x), c, false)
+  return CovariantVector(x->ForwardDiff.gradient(ϕ, c \ x), c, false)
 end
 grad(s::Scalar) = grad(s.f, s.c)
 
@@ -159,15 +176,10 @@ import Base.div
 div(A⃗) = ∂ᵢ(J * Aⁱ) / J
 """
 div(v::ContravariantVector) = Scalar(x->div(v, x), v.c)
-function div(v::ContravariantVector{D, <:Covariant}, x) where {D}
+function div(v::ContravariantVector, r)
   # v.c is CoordinateTransform{Covariant, D}
-  return sum(diag(∇(y->J(v, y) * v(y), x, Covariant))) / J(v, x)
+  return sum(diag(ForwardDiff.jacobian(y->J(v, y) * v(y), r))) / J(v, r)
 end
-function div(v::ContravariantVector{D, <:Contravariant}, x) where {D}
-  # v.c is CoordinateTransform{Contravariant, D}
-  return sum(diag(∇(x->v(x) * J(v.c, x), x, Covariant) * J⃗(v, x, Contravariant))) / J(v, x)
-end
-
 div(v::CovariantVector) = div(ContravariantVector(v))
 div(v::CovariantVector, x) = div(ContravariantVector(v), x)
 
@@ -177,13 +189,9 @@ div(v::CovariantVector, x) = div(ContravariantVector(v), x)
 """
 curl(A⃗) = ∑ₖ e⃗ₖ (∂ᵢAⱼ - ∂ⱼAᵢ) / J
 """
-function curl(v::CovariantVector{3, <:Covariant}, x::T) where {T}
-  ∂ⱼAᵢ = ∇(v, x, Covariant)
-  ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
-  return ϵijk∂ⱼAᵢ ./ J(v, x)
-end
-function curl(v::CovariantVector{3, <:Contravariant}, x::T) where {T}
-  ∂ⱼAᵢ = ∇(v, x, Covariant) * J⃗(v, x, Contravariant)
+function curl(v::CovariantVector{3}, x::T) where {T}
+  #∂ⱼAᵢ = ∇(v, x, Covariant)
+  ∂ⱼAᵢ = ForwardDiff.jacobian(v, x)
   ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
   return ϵijk∂ⱼAᵢ ./ J(v, x)
 end
