@@ -3,7 +3,10 @@ using ForwardDiff, LinearAlgebra, Random, Test
 
 Random.seed!(0)
 
-include("Cartesian.jl")
-include("Cylindrical.jl")
-include("Toroidal.jl")
-include("ChangeOfCoordinates.jl")
+@testset "DifferentialGeometries tests" begin
+  include("Cartesian.jl")
+  include("Cylindrical.jl")
+  include("Toroidal.jl")
+  include("ChangeOfCoordinates.jl")
+  include("AutodiffPropagation.jl")
+end

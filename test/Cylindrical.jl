@@ -106,13 +106,13 @@
       a, b = rand(3), rand(2:5, 3, 3)
       fv = z -> [a .* prod(z .^ b[:, i]) for i in 1:3]
       r = [2, 2pi, 2] .* rand(3) .- [0, pi, 1]
-      x = f(r)
       j = ForwardDiff.jacobian(fv, r)
       jr = ForwardDiff.jacobian(x->fv(x) * x[1], r)
-      v = CovariantVector(fv, f, true)
-      @test curl(v)(r, true) ≈ [j[3, 2]/r[1] - j[2, 3],
-                                j[1, 3] - j[3, 1],
-                                (jr[2, 1] - j[1, 2]) / r[1]]
+      for v ∈ (CovariantVector(fv, ct, true), ContravariantVector(fv, ct, true))
+        @test curl(v)(r, true) ≈ [j[3, 2]/r[1] - j[2, 3],
+                                  j[1, 3] - j[3, 1],
+                                  (jr[2, 1] - j[1, 2]) / r[1]]
+      end
     end
   end
 
@@ -131,6 +131,35 @@
       a, b = rand(3), rand(2:5, 3, 3)
       s(x) = mapreduce(i->a[i] * prod(x.^b[:, i]), +, 1:3)
       @test curl(grad(s, ct))(R) ≈ zeros(3) atol=1e-12
+    end
+  end
+
+  @testset "endless operations" begin
+    (R,X,fR) = getcoordsandtransforms(f)
+    a, b = rand(3), rand(4:7, 3, 3)
+    fv = z -> [a[i] .* prod(z .^ b[:, i]) for i in 1:3]
+    for T1 ∈ (CovariantVector, ContravariantVector)
+      for T2 ∈ (CovariantVector, ContravariantVector)
+        A = T1(fv, f, true)
+        B = T2(fv, f⁻¹, true)
+        @test A(R, true) ≈ B(R, true)
+        cA = curl(A)(R, true)
+        ccA = curl(curl(A))(R, true)
+        #cccA = curl(curl(curl(A)))(R, true)
+        #ccccA = curl(curl(curl(curl(A))))(R, true)
+        cB = curl(B)(R, true)
+        ccB = curl(curl(B))(R, true)
+        #cccB = curl(curl(curl(B)))(R, true)
+        #ccccB = curl(curl(curl(curl(B))))(R, true)
+        @test all(x->!iszero(x), cA)
+        @test all(x->!iszero(x), ccA)
+        #@test all(x->!iszero(x), cccA)
+        #@test all(x->!iszero(x), ccccA)
+        @test cA    ≈ cB
+        @test ccA   ≈ ccB
+        #@test cccA  ≈ cccB
+        #@test ccccA ≈ ccccB
+      end
     end
   end
 end

@@ -10,16 +10,16 @@
 
     v = CovariantVector(x->[x[1], x[2], x[3]], ct, true)
     @test div(v)(x) ≈ 3
-    @test curl(v)(x) == zeros(3)
+    @test curl(v)(x) ≈ zeros(3)
     v = CovariantVector(x->[x[3], x[1], x[2]], ct, true)
-    @test div(v)(x) == 0
-    @test curl(v)(x) == ones(3)
-    @test div(curl(v))(x) == 0
-    @test div(curl(v))(x) == 0
+    @test div(v)(x) ≈ 0
+    @test curl(v)(x) ≈ ones(3)
+    @test div(curl(v))(x) ≈ 0
+    @test div(curl(v))(x) ≈ 0
     v = CovariantVector(x->[-x[2], -x[3], -x[1]], ct, true)
-    @test div(v)(x) == 0
-    @test curl(v)(x) == ones(3)
-    @test div(curl(v))(x) == 0
-    @test div(curl(v))(x) == 0
+    @test div(v)(x) ≈ 0
+    @test curl(v)(x) ≈ ones(3)
+    @test div(curl(v))(x) ≈ 0
+    @test div(curl(v))(x) ≈ 0
   end
 end

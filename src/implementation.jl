@@ -1,4 +1,5 @@
 using ForwardDiff, LinearAlgebra, NLsolve
+using ForwardDiff: Dual, Tag, tagtype, value, partials
 
 
 # η = ηₐ ∇a + ηᵦ ∇β + ηᵧ∇γ
@@ -36,12 +37,10 @@ struct Scalar{V<:Variance, D, F} <: AbstractScalar{V, D}
 end
 (s::Scalar)(x) = s.f(x)
 
-J⃗(c::Act{V}, r, ::Type{V}) where {V<:Covariant} = ForwardDiff.jacobian(c, r)
+J⃗(c::Act{Covariant}, r, ::Type{Covariant}) = ForwardDiff.jacobian(c, r)
 J⃗(c::Act{Covariant}, r, ::Type{Contravariant}) = inv(J⃗(c, r, Covariant))
-function J⃗(c::Act{V}, r, ::Type{V}) where {V<:Contravariant}
-  return inv(ForwardDiff.jacobian(c.f, c \ r))
-end
-J⃗(c::Act{Contravariant}, r, ::Type{Covariant}) = inv(J⃗(c, r, Contravariant))
+J⃗(c::Act{Contravariant}, r, ::Type{Covariant}) = ForwardDiff.jacobian(c.f, c \ r)
+J⃗(c::Act{Contravariant}, r, ::Type{Contravariant}) = inv(J⃗(c, r, Covariant))
 J⃗(c::Act{V}, x) where {V<:Variance} = J⃗(c, x, V)
 
 covariantbasis(c::Act, x) = J⃗(c, x, Covariant)
@@ -54,18 +53,40 @@ J(f, x) = sqrt(det(gᵢⱼ(f, x)))
 jacobi(f, x) = J⃗(f, x)
 jacobian(f, x) = J(f, x)
 
-function invert(f::F, x::ForwardDiff.Dual, initial_x=ones(size(x))) where {F}
-  return invert(f, ForwardDiff.value(x), initial_x)
+valueise(x) = x
+valueise(x::T) where {T<:Dual} = valueise(value(x))
+changevalue(x, y, s) = x == s ? y : x
+function changevalue(x::AbstractVector, y, s)
+  for i in eachindex(x)
+    x[i] = changevalue(x[i], y[i], s[i])
+  end
+  return x
 end
-function invert(f::F, x::AbstractArray{<:ForwardDiff.Dual, N},
-    initial_x=ones(size(x))) where {F, N}
-  return invert(f, ForwardDiff.value.(x), initial_x)
+function changevalue(x::AbstractVector{<:Dual}, y, s)
+  for i in eachindex(x)
+    x[i] = changevalue(x[i], y[i], s[i])
+  end
+  return x
 end
-function invert(f::F, x, initial_x=ones(size(x))) where {F}
-  f!(m, y) = (m .= f(y) .- x; return nothing)
-  y = NLsolve.nlsolve(f!, initial_x, autodiff=:forward)
-  return y.zero
+function changevalue(x::Dual{<:Tag}, y, s) where {T<:AbstractFloat, D}
+  return Dual{tagtype(x)}(changevalue(x.value, y, s), partials(x))
 end
+function changevalue(x::Dual{<:Tag{<:Function,T}, T, D}, y::T, s::T
+                     ) where {T<:AbstractFloat, D}
+  return x.value == s ? Dual{tagtype(x)}(y, partials(x)) : x
+end
+changevalue(x, y) = changevalue(deepcopy(x), y, valueise.(x))
+"""
+Given coordinate transform f(y) -> x, find y for given x.
+"""
+function invert(f::F, x::AbstractVector{T}, initial_y=ones(size(x))
+    ) where {F, T}
+  f!(m, y) = (m .= f(y) .- valueise.(x); return nothing)
+  y = NLsolve.nlsolve(f!, initial_y, autodiff=:forward, ftol=1e-12).zero
+  # What is the proper way? This only works for a single AD pass.
+  return changevalue(x, y)
+end
+
 
 invert(f::F) where {F} = x -> invert(f, x)
 function invert(f::Act{V,D}) where {V<:Variance, D}
@@ -201,20 +222,38 @@ div(v::CovariantVector, x) = div(ContravariantVector(v), x)
 ∇o(a) = div(a)
 ∇o(a, b) = div(a, b)
 
+#"""
+#curl(A⃗) = ∑ₖ e⃗ₖ (∂ᵢAⱼ - ∂ⱼAᵢ) / J
+#"""
+#function curl(v::CovariantVector{3}, x::T) where {T}
+#  #∂ⱼAᵢ = ∇(v, x, Covariant)
+#  ∂ⱼAᵢ = ForwardDiff.jacobian(v, x)
+#  ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
+#  return ϵijk∂ⱼAᵢ ./ J(v, x)
+#end
+#
+#curl(v::CovariantVector) = ContravariantVector(x->curl(v, x), v.c)
+#curl(f::F, c::Act) where {F} = curl(CovariantVector(f, c, true))
+#curl(v::ContravariantVector) = curl(CovariantVector(v))
+#curl(v::ContravariantVector, x) = curl(CovariantVector(v), x)
+
 """
 curl(A⃗) = ∑ₖ e⃗ₖ (∂ᵢAⱼ - ∂ⱼAᵢ) / J
 """
-function curl(v::CovariantVector{3}, x::T) where {T}
-  #∂ⱼAᵢ = ∇(v, x, Covariant)
-  ∂ⱼAᵢ = ForwardDiff.jacobian(v, x)
-  ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
-  return ϵijk∂ⱼAᵢ ./ J(v, x)
+function curl(v::CovariantVector{3}) where {T}
+  function inner(x)
+    ∂ⱼAᵢ = ForwardDiff.jacobian(v, x)
+    ϵijk∂ⱼAᵢ = [∂ⱼAᵢ[3,2] - ∂ⱼAᵢ[2,3], ∂ⱼAᵢ[1,3] - ∂ⱼAᵢ[3,1], ∂ⱼAᵢ[2,1] - ∂ⱼAᵢ[1,2]]
+    return ϵijk∂ⱼAᵢ ./ J(v, x)
+  end
+  return ContravariantVector(inner, v.c)
 end
-
-curl(v::CovariantVector) = ContravariantVector(x->curl(v, x), v.c)
-curl(f::F, c::Act) where {F} = curl(CovariantVector(f, c, true))
 curl(v::ContravariantVector) = curl(CovariantVector(v))
-curl(v::ContravariantVector, x) = curl(CovariantVector(v), x)
+curl(v::ContravariantVector, x) = curl(CovariantVector(v))(x)
+
+#curl(v::CovariantVector) = ContravariantVector(x->curl(v, x), v.c)
+#curl(f::F, c::Act) where {F} = curl(CovariantVector(f, c, true))
+
 
 ∇x(a) = curl(a)
 ∇x(a, b) = curl(a, b)
