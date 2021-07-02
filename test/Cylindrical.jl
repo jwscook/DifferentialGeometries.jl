@@ -1,6 +1,7 @@
 @testset "Cylindrical" begin
   f = ToCartesian(r->[r[1] * cos(r[2]), r[1]*sin(r[2]), r[3]], 3)
   f⁻¹ = FromCartesian(x->[sqrt(x[1]^2 + x[2]^2), atan(x[2], x[1]), x[3]], 3)
+  numiters = 1
 
   @testset "inversions" begin
     r = [π, exp(1), √2] # r, θ, z
@@ -60,7 +61,7 @@
   end
 
   @testset "metrics, jacobians, line elements" begin
-    for ct ∈ (f, f⁻¹), _ in 1:10
+    for ct ∈ (f, f⁻¹), _ in 1:numiters
       (R,X,fR) = getcoordsandtransforms(ct)
 
       @test gᵢⱼ(ct, R) ≈ [1 0 0; 0 R[1]^2 0; 0 0 1]
@@ -73,8 +74,7 @@
   end
 
   @testset "divergence" begin
-    #for ct ∈ (f, f⁻¹), _ in 1:10
-    for ct ∈ (f, ), _ in 1:10
+    for ct ∈ (f, f⁻¹), _ in 1:numiters
       (R,X,fR) = getcoordsandtransforms(ct)
 
       div10r(r) = [2 * r[1]/2, 3 * r[1] * r[2], 5 * r[3]]
@@ -97,14 +97,14 @@
   end
 
   @testset "curl" begin
-    for ct ∈ (f, f⁻¹), _ in 1:10
+    for ct ∈ (f, f⁻¹), _ in 1:numiters
       (R,X,fR) = getcoordsandtransforms(ct)
 
       v = CovariantVector(z->[z[3] - 2z[2] * z[1], 0, 0], ct, true)
       @test curl(v)(R, true) ≈ [0, 1, 2]
 
       a, b = rand(3), rand(2:5, 3, 3)
-      fv = z -> [a .* prod(z .^ b[:, i]) for i in 1:3]
+      fv(z) = [a[i] .* prod(z .^ b[:, i]) for i in 1:3]
       r = [2, 2pi, 2] .* rand(3) .- [0, pi, 1]
       j = ForwardDiff.jacobian(fv, r)
       jr = ForwardDiff.jacobian(x->fv(x) * x[1], r)
@@ -117,7 +117,7 @@
   end
 
   @testset "div curl, curl grad" begin
-    for ct ∈ (f, f⁻¹), _ in 1:10
+    for ct ∈ (f, f⁻¹), _ in 1:numiters
       (R,X,fR) = getcoordsandtransforms(ct)
       v = ContravariantVector(z->[prod(z), prod(z)^2, prod(z)^3], ct, true)
       @test div(curl(v))(R) ≈ 0 atol=1e-12
@@ -137,7 +137,7 @@
   @testset "endless operations" begin
     (R,X,fR) = getcoordsandtransforms(f)
     a, b = rand(3), rand(4:7, 3, 3)
-    fv = z -> [a[i] .* prod(z .^ b[:, i]) for i in 1:3]
+    fv(z) = [a[i] .* prod(z .^ b[:, i]) for i in 1:3]
     for T1 ∈ (CovariantVector, ContravariantVector)
       for T2 ∈ (CovariantVector, ContravariantVector)
         A = T1(fv, f, true)
