@@ -1,5 +1,5 @@
 @testset "Cylindrical" begin
-  f = ToCartesian(r->[r[1] * cos(r[2]), r[1]*sin(r[2]), r[3]], 3)
+  f = ToCartesian(r->[r[1] * cos(r[2]), r[1] * sin(r[2]), r[3]], 3)
   f⁻¹ = FromCartesian(x->[sqrt(x[1]^2 + x[2]^2), atan(x[2], x[1]), x[3]], 3)
   numiters = 1
 
@@ -57,6 +57,7 @@
     # assert logic is correct or the tests are meaningless
     @assert f(R) ≈ X
     @assert f⁻¹(X) ≈ R
+    @assert fR(X) ≈ R
     return (R,X,fR)
   end
 
@@ -80,6 +81,9 @@
       div10r(r) = [2 * r[1]/2, 3 * r[1] * r[2], 5 * r[3]]
       v = ContravariantVector(z->div10r(fR(z)), ct, true)
       @test div(v)(R) ≈ 10
+      if !(div(v)(R) ≈ 10)
+        @show ct
+      end
 
       p, m, a = rand(2:5), rand(2:5), rand(2:5)
       fr = r -> r[1]^p
